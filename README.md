@@ -1,3 +1,27 @@
+# Fast-2DGS (private working copy)
+
+[2D Gaussian Splatting](https://github.com/hbb1/2d-gaussian-splatting) with FastGS's multi-view consistent
+densification, plus fixes for Jetson Thor / CUDA 13. Upstream history is kept; `upstream` remote = hbb1/2d-gaussian-splatting.
+
+Changes (see the commits after `f3e3b9f`):
+- `--fastgs`: [FastGS](https://github.com/fastgs/FastGS) densify / prune (`utils/fast_utils.py`, `GaussianModel.densify_and_prune_fastgs`).
+  Needs FastGS's `diff_gaussian_rasterization_fastgs` installed (surfels are scored through it as flat 3D Gaussians).
+- `--fused_ssim`: fused-ssim kernel for the training SSIM.
+- `--depth_dir` / `--lambda_depth`: L1 depth supervision from uint16 millimeter depth maps next to the images.
+- Projection from the COLMAP principal point; CUDA 13 build (`<cstdint>`); matplotlib 3.10.
+- `submodules/diff-surfel-rasterization` is vendored (was a submodule) so its fix lives here.
+
+```bash
+git clone --recursive https://github.com/chenyuting3077/fast-2dgs.git
+pip install --no-build-isolation submodules/diff-surfel-rasterization submodules/simple-knn
+python train.py -s <colmap> -m <out> --eval --depth_dir depths --lambda_depth 0.1 --fastgs --fused_ssim \
+    --densification_interval 500 --iterations 20000 --position_lr_max_steps 20000 --densify_until_iter 10000
+```
+
+Same license as upstream (Inria / MPII Gaussian-Splatting license: non-commercial research and evaluation only).
+
+---
+
 # 2D Gaussian Splatting for Geometrically Accurate Radiance Fields
 
 [Project page](https://surfsplatting.github.io/) | [Paper](https://arxiv.org/pdf/2403.17888) | [Video](https://www.youtube.com/watch?v=oaHCtB6yiKU) | [Surfel Rasterizer (CUDA)](https://github.com/hbb1/diff-surfel-rasterization) | [Surfel Rasterizer (Python)](https://colab.research.google.com/drive/1qoclD7HJ3-o0O1R8cvV3PxLhoDCMsH8W?usp=sharing) | [DTU+COLMAP (3.5GB)](https://drive.google.com/drive/folders/1SJFgt8qhQomHX55Q4xSvYE2C6-8tFll9) | [SIBR Viewer Pre-built for Windows](https://github.com/RongLiu-Leo/Gaussian-Splatting-Monitor/releases/download/v1.0/GS_Monitor.zip) | [Web Viewer](https://github.com/mkkellogg/GaussianSplats3D) <br>
