@@ -1,4 +1,4 @@
-# Fast-2DGS (private working copy)
+# Fast-2DGS (branch `fast-2dgs` of this fork)
 
 [2D Gaussian Splatting](https://github.com/hbb1/2d-gaussian-splatting) with FastGS's multi-view consistent
 densification, plus fixes for Jetson Thor / CUDA 13. Upstream history is kept; `upstream` remote = hbb1/2d-gaussian-splatting.
@@ -12,7 +12,7 @@ Changes (see the commits after `f3e3b9f`):
 - `submodules/diff-surfel-rasterization` is vendored (was a submodule) so its fix lives here.
 
 ```bash
-git clone --recursive https://github.com/chenyuting3077/fast-2dgs.git
+git clone --recursive -b fast-2dgs https://github.com/chenyuting3077/2d-gaussian-splatting.git fast-2dgs
 pip install --no-build-isolation submodules/diff-surfel-rasterization submodules/simple-knn
 python train.py -s <colmap> -m <out> --eval --depth_dir depths --lambda_depth 0.1 --fastgs --fused_ssim \
     --densification_interval 500 --iterations 20000 --position_lr_max_steps 20000 --densify_until_iter 10000
