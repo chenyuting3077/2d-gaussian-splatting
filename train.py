@@ -17,6 +17,7 @@ from gaussian_renderer import render, network_gui
 import sys
 from scene import Scene, GaussianModel
 from utils.general_utils import safe_state
+from utils.fast_utils import sampling_cameras, compute_gaussian_score_fastgs
 import uuid
 from tqdm import tqdm
 from utils.image_utils import psnr, render_net_image
@@ -71,7 +72,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         
         gt_image = viewpoint_cam.original_image.cuda()
         Ll1 = l1_loss(image, gt_image)
-        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+        if opt.fused_ssim:
+            from fused_ssim import fused_ssim
+            ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
+        else:
+            ssim_value = ssim(image, gt_image)
+        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
         
         # regularization
         lambda_normal = opt.lambda_normal if iteration > 7000 else 0.0
@@ -137,10 +143,21 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-                    gaussians.densify_and_prune(opt.densify_grad_threshold, opt.opacity_cull, scene.cameras_extent, size_threshold)
+                    if opt.fastgs:
+                        camlist = sampling_cameras(scene.getTrainCameras())
+                        importance, pruning = compute_gaussian_score_fastgs(camlist, gaussians, pipe, background, opt, densify=True)
+                        gaussians.densify_and_prune_fastgs(opt.densify_grad_threshold, opt.opacity_cull, scene.cameras_extent,
+                                                           size_threshold, importance, pruning, opt.importance_thresh)
+                    else:
+                        gaussians.densify_and_prune(opt.densify_grad_threshold, opt.opacity_cull, scene.cameras_extent, size_threshold)
                 
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
+
+            # FastGS late pruning: every 3000 steps in the second half, after densification ends
+            if opt.fastgs and iteration % 3000 == 0 and opt.densify_until_iter < iteration < opt.iterations:
+                _, pruning = compute_gaussian_score_fastgs(sampling_cameras(scene.getTrainCameras()), gaussians, pipe, background, opt)
+                gaussians.final_prune_fastgs(0.1, pruning)
 
             # Optimizer step
             if iteration < opt.iterations:

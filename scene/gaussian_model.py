@@ -402,6 +402,67 @@ class GaussianModel:
 
         torch.cuda.empty_cache()
 
+    def densify_and_prune_fastgs(self, max_grad, min_opacity, extent, max_screen_size, importance_score,
+                                 pruning_score, importance_thresh=5):
+        """FastGS densification on top of the 2DGS gradient criterion: clone / split only the
+        candidates that at least importance_thresh sampled views flag as under-fit, and prune
+        half of the low-opacity / oversized ones, preferring those with a bad pruning score.
+        (FastGS splits by the absolute screen gradient; the 2DGS rasterizer only has the
+        regular one, so it is used for both.)"""
+        grads = self.xyz_gradient_accum / self.denom
+        grads[grads.isnan()] = 0.0
+        agreed = importance_score.squeeze() > importance_thresh
+
+        g = torch.norm(grads, dim=-1) >= max_grad
+        small = torch.max(self.get_scaling, dim=1).values <= self.percent_dense * extent
+        clone = g & small & agreed
+        split = g & ~small & agreed
+        n0 = self.get_xyz.shape[0]
+
+        # clone
+        self.densification_postfix(self._xyz[clone], self._features_dc[clone], self._features_rest[clone],
+                                   self._opacity[clone], self._scaling[clone], self._rotation[clone])
+        # split (indices still refer to the first n0 points)
+        sel = torch.zeros(self.get_xyz.shape[0], dtype=bool, device="cuda")
+        sel[:n0] = split
+        N = 2
+        stds = self.get_scaling[sel].repeat(N, 1)
+        stds = torch.cat([stds, 0 * torch.ones_like(stds[:, :1])], dim=-1)
+        samples = torch.normal(mean=torch.zeros_like(stds), std=stds)
+        rots = build_rotation(self._rotation[sel]).repeat(N, 1, 1)
+        new_xyz = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1) + self.get_xyz[sel].repeat(N, 1)
+        new_scaling = self.scaling_inverse_activation(self.get_scaling[sel].repeat(N, 1) / (0.8 * N))
+        self.densification_postfix(new_xyz, self._features_dc[sel].repeat(N, 1, 1), self._features_rest[sel].repeat(N, 1, 1),
+                                   self._opacity[sel].repeat(N, 1), new_scaling, self._rotation[sel].repeat(N, 1))
+        self.prune_points(torch.cat((sel, torch.zeros(N * int(sel.sum()), device="cuda", dtype=bool))))
+
+        # prune: half of the candidates, sampled by 1 / (1 - pruning score); new points have score 0
+        prune_mask = (self.get_opacity < min_opacity).squeeze()
+        if max_screen_size:
+            big_vs = self.max_radii2D > max_screen_size
+            big_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
+            prune_mask = prune_mask | big_vs | big_ws
+        budget = int(0.5 * int(prune_mask.sum()))
+        if budget:
+            n = self.get_xyz.shape[0]
+            weight = torch.ones(n, device="cuda")
+            survivors = torch.ones(n0, dtype=bool, device="cuda")
+            survivors[split] = False  # split parents were removed above
+            ps = pruning_score.squeeze()[survivors]
+            weight[:ps.shape[0]] = 1 / (1e-6 + (1 - ps))
+            chosen = torch.zeros(n, dtype=bool, device="cuda")
+            chosen[torch.multinomial(weight, budget, replacement=False)] = True
+            self.prune_points(prune_mask & chosen)
+
+        # as FastGS: cap opacity at 0.8 after every densification
+        opacities_new = inverse_sigmoid(torch.min(self.get_opacity, torch.ones_like(self.get_opacity) * 0.8))
+        self._opacity = self.replace_tensor_to_optimizer(opacities_new, "opacity")["opacity"]
+        torch.cuda.empty_cache()
+
+    def final_prune_fastgs(self, min_opacity, pruning_score):
+        """FastGS late-stage pruning: low opacity or a high multi-view pruning score."""
+        self.prune_points((self.get_opacity < min_opacity).squeeze() | (pruning_score.squeeze() > 0.9))
+
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter], dim=-1, keepdim=True)
         self.denom[update_filter] += 1

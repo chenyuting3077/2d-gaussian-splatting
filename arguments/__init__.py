@@ -88,7 +88,13 @@ class OptimizationParams(ParamGroup):
         self.lambda_dssim = 0.2
         self.lambda_dist = 0.0
         self.lambda_normal = 0.05
-        self.lambda_depth = 0.0  # L1 (meters) between rendered surface depth and <depth_dir> depth
+        self.lambda_depth = 0.0
+        # FastGS multi-view consistent densification (utils/fast_utils.py)
+        self.fastgs = False
+        self.loss_thresh = 0.1          # normalized per-pixel L1 above which a pixel counts as high-error
+        self.importance_thresh = 5      # densify only Gaussians flagged in more than this many pixels per view
+        self.mult = 0.5                 # FastGS compact-box multiplier for the scoring rasterizer
+        self.fused_ssim = False         # fused-ssim CUDA kernel for the training SSIM  # L1 (meters) between rendered surface depth and <depth_dir> depth
         self.opacity_cull = 0.05
 
         self.densification_interval = 100
