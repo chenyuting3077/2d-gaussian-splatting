@@ -54,6 +54,9 @@ class ModelParams(ParamGroup):
         self._white_background = False
         self.data_device = "cuda"
         self.eval = False
+        # uint16 millimeter depth maps next to the images (<source>/<depth_dir>/<image name>.png),
+        # loaded when set; used by --lambda_depth
+        self.depth_dir = ""
         self.render_items = ['RGB', 'Alpha', 'Normal', 'Depth', 'Edge', 'Curvature']
         super().__init__(parser, "Loading Parameters", sentinel)
 
@@ -85,6 +88,7 @@ class OptimizationParams(ParamGroup):
         self.lambda_dssim = 0.2
         self.lambda_dist = 0.0
         self.lambda_normal = 0.05
+        self.lambda_depth = 0.0  # L1 (meters) between rendered surface depth and <depth_dir> depth
         self.opacity_cull = 0.05
 
         self.densification_interval = 100

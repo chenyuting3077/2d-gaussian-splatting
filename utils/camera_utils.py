@@ -48,10 +48,22 @@ def loadCam(args, id, cam_info, resolution_scale):
         loaded_mask = None
         gt_image = resized_image_rgb
 
+    depth = None
+    if getattr(args, "depth_dir", ""):
+        import os
+        import cv2
+        import torch
+        src = os.path.dirname(os.path.dirname(cam_info.image_path))
+        d = cv2.imread(os.path.join(src, args.depth_dir, cam_info.image_name + ".png"), cv2.IMREAD_UNCHANGED)
+        if d is not None:
+            d = cv2.resize(d, resolution, interpolation=cv2.INTER_NEAREST)
+            depth = torch.from_numpy(d.astype("float32") / 1000.0)[None]
+
     return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
                   image=gt_image, gt_alpha_mask=loaded_mask,
-                  image_name=cam_info.image_name, uid=id, data_device=args.data_device)
+                  image_name=cam_info.image_name, uid=id, data_device=args.data_device,
+                  cx_frac=cam_info.cx_frac, cy_frac=cam_info.cy_frac, depth=depth)
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     camera_list = []

@@ -84,8 +84,16 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         normal_loss = lambda_normal * (normal_error).mean()
         dist_loss = lambda_dist * (rend_dist).mean()
 
+        # depth supervision
+        depth_loss = torch.zeros((), device="cuda")
+        if opt.lambda_depth > 0 and viewpoint_cam.depth is not None:
+            gt_depth = viewpoint_cam.depth.cuda()
+            valid = gt_depth > 0
+            if valid.any():
+                depth_loss = opt.lambda_depth * (render_pkg["surf_depth"] - gt_depth)[valid].abs().mean()
+
         # loss
-        total_loss = loss + dist_loss + normal_loss
+        total_loss = loss + dist_loss + normal_loss + depth_loss
         
         total_loss.backward()
 
